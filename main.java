@@ -1129,3 +1129,90 @@ final class DatasetHashRegistry {
     String getLabel(String datasetHashHex) { return labelByHashHex.get(datasetHashHex); }
 }
 
+// -----------------------------------------------------------------------------
+// CmdExport - Export run report to stdout or file
+// -----------------------------------------------------------------------------
+
+final class CmdExport implements Command {
+    @Override public String name() { return "export"; }
+    @Override public String usage() { return "export [filename]"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        String report = RunReportExporter.exportAll(registry);
+        if (args.isEmpty()) {
+            out.println(report);
+            return;
+        }
+        try (java.io.PrintWriter w = new java.io.PrintWriter(args.get(0), StandardCharsets.UTF_8)) {
+            w.print(report);
+        } catch (java.io.IOException e) {
+            out.println("Error: " + e.getMessage());
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CmdQueryByTier - List runs by model tier
+// -----------------------------------------------------------------------------
+
+final class CmdQueryByTier implements Command {
+    @Override public String name() { return "query-tier"; }
+    @Override public String usage() { return "query-tier <1|2|3|4>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.isEmpty()) { out.println("Usage: " + usage()); return; }
+        int tier = Integer.parseInt(args.get(0));
+        RunQueryService q = new RunQueryService(registry);
+        for (RunRecord r : q.byModelTier(tier)) {
+            out.println(r.getRunId() + " | " + r.getEpochCount() + " epochs | final=" + r.isFinalized());
+        }
+        out.println("Count: " + q.byModelTier(tier).size());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CmdQueryQuorum - List runs with positive quorum
+// -----------------------------------------------------------------------------
+
+final class CmdQueryQuorum implements Command {
+    @Override public String name() { return "query-quorum"; }
+    @Override public String usage() { return "query-quorum"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        RunQueryService q = new RunQueryService(registry);
+        for (RunRecord r : q.withPositiveQuorum()) {
+            out.println(r.getRunId() + " | " + r.getPositiveAttestations() + "/" + r.getTotalAttestations());
+        }
+        out.println("Count: " + q.withPositiveQuorum().size());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CmdListValidators - List all validators
+// -----------------------------------------------------------------------------
+
+final class CmdListValidators implements Command {
+    @Override public String name() { return "list-validators"; }
+    @Override public String usage() { return "list-validators"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        for (ValidatorState v : registry.getAllValidators()) {
+            out.println(v.getAddress() + " | stake=" + v.getStake() + " | attested=" + v.getAttestedRuns().size());
+        }
+        out.println("Total: " + registry.getValidatorCount());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CmdFee - Show fee for tier
+// -----------------------------------------------------------------------------
+
+final class CmdFee implements Command {
+    @Override public String name() { return "fee"; }
+    @Override public String usage() { return "fee <tier 1-4>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.isEmpty()) { out.println("Usage: " + usage()); return; }
+        int tier = Integer.parseInt(args.get(0));
+        BigInteger fee = FeeCalculator.feeForTier(tier);
+        out.println("Fee for tier " + tier + ": " + fee + " wei");
