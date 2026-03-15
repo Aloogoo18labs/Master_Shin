@@ -694,3 +694,90 @@ final class RunQueryService {
     List<RunRecord> byCoordinator(String coordinator) {
         return registry.getAllRuns().stream().filter(r -> r.getCoordinator().equals(coordinator)).collect(Collectors.toList());
     }
+
+    long countByTier(int tier) { return byModelTier(tier).size(); }
+    long countFinalized() { return finalizedOnly().size(); }
+}
+
+// -----------------------------------------------------------------------------
+// Validator weights - Optional weight per validator
+// -----------------------------------------------------------------------------
+
+final class ValidatorWeights {
+    private final Map<String, Long> weights = new ConcurrentHashMap<>();
+
+    void set(String address, long weight) { weights.put(address, weight); }
+    long get(String address) { return weights.getOrDefault(address, 1L); }
+    long getTotal(Collection<ValidatorState> validators) {
+        return validators.stream().mapToLong(v -> get(v.getAddress())).sum();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Fee calculator - Compute registration fee by tier
+// -----------------------------------------------------------------------------
+
+final class FeeCalculator {
+    private static final BigInteger BASE_WEI = BigInteger.valueOf(10_000_000_000_000_000L); // 0.01 ETH
+    private static final int TIER_1_MUL = 10000, TIER_2_MUL = 12000, TIER_3_MUL = 15000, TIER_4_MUL = 20000;
+    private static final int DENOM = 10000;
+
+    static BigInteger feeForTier(int modelTier) {
+        int mul = modelTier == 1 ? TIER_1_MUL : modelTier == 2 ? TIER_2_MUL : modelTier == 3 ? TIER_3_MUL : modelTier == 4 ? TIER_4_MUL : TIER_1_MUL;
+        return BASE_WEI.multiply(BigInteger.valueOf(mul)).divide(BigInteger.valueOf(DENOM));
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Preset manager - Config presets (label, tier, suggested epochs)
+// -----------------------------------------------------------------------------
+
+final class PresetRecord {
+    private final String id;
+    private final String label;
+    private final int modelTier;
+    private final int suggestedEpochs;
+
+    PresetRecord(String id, String label, int modelTier, int suggestedEpochs) {
+        this.id = id;
+        this.label = label;
+        this.modelTier = modelTier;
+        this.suggestedEpochs = suggestedEpochs;
+    }
+
+    String getId() { return id; }
+    String getLabel() { return label; }
+    int getModelTier() { return modelTier; }
+    int getSuggestedEpochs() { return suggestedEpochs; }
+}
+
+final class PresetManager {
+    private final Map<String, PresetRecord> presets = new ConcurrentHashMap<>();
+
+    void add(String id, String label, int modelTier, int suggestedEpochs) {
+        presets.put(id, new PresetRecord(id, label, modelTier, suggestedEpochs));
+    }
+
+    PresetRecord get(String id) { return presets.get(id); }
+    Collection<PresetRecord> getAll() { return new ArrayList<>(presets.values()); }
+}
+
+// -----------------------------------------------------------------------------
+// Run metadata - Optional URI per run
+// -----------------------------------------------------------------------------
+
+final class RunMetadataStore {
+    private final Map<String, String> uriByRunId = new ConcurrentHashMap<>();
+
+    void set(String runId, String uri) { uriByRunId.put(runId, uri); }
+    String get(String runId) { return uriByRunId.get(runId); }
+}
+
+// -----------------------------------------------------------------------------
+// Tag index - Index runs by tag
+// -----------------------------------------------------------------------------
+
+final class TagIndex {
+    private final Map<String, Set<String>> runIdsByTag = new ConcurrentHashMap<>();
+
+    void index(String runId, String tag) {
