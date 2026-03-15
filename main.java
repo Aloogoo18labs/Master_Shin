@@ -1042,3 +1042,90 @@ final class RunSummaryDto {
 // -----------------------------------------------------------------------------
 // Validator summary DTO
 // -----------------------------------------------------------------------------
+
+final class ValidatorSummaryDto {
+    final String address;
+    final BigInteger stake;
+    final int attestedCount;
+
+    ValidatorSummaryDto(ValidatorState v) {
+        this.address = v.getAddress();
+        this.stake = v.getStake();
+        this.attestedCount = v.getAttestedRuns().size();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Export runs to text report
+// -----------------------------------------------------------------------------
+
+final class RunReportExporter {
+    static String exportAll(LocalYangGoRegistry registry) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("YangGo Run Report\n");
+        sb.append("Total runs: ").append(registry.getRunCount()).append("\n");
+        sb.append("Total validators: ").append(registry.getValidatorCount()).append("\n\n");
+        for (RunRecord r : registry.getAllRuns()) {
+            sb.append("Run: ").append(r.getRunId()).append(" | tier=").append(r.getModelTier())
+              .append(" | epochs=").append(r.getEpochCount()).append(" | final=").append(r.isFinalized())
+              .append(" | attest=").append(r.getPositiveAttestations()).append("/").append(r.getTotalAttestations()).append("\n");
+        }
+        return sb.toString();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Scheduler stub for periodic attestation check
+// -----------------------------------------------------------------------------
+
+final class AttestationScheduler {
+    private final LocalYangGoRegistry registry;
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+
+    AttestationScheduler(LocalYangGoRegistry registry) { this.registry = registry; }
+
+    void scheduleAttestationCheck(Runnable check, long periodMs) {
+        scheduler.scheduleAtFixedRate(check, periodMs, periodMs, TimeUnit.MILLISECONDS);
+    }
+
+    void shutdown() { scheduler.shutdown(); }
+}
+
+// -----------------------------------------------------------------------------
+// Run ID generator (alternative)
+// -----------------------------------------------------------------------------
+
+final class RunIdGenerator {
+    private static final AtomicLong counter = new AtomicLong(0);
+
+    static String next() {
+        return "run_" + counter.incrementAndGet() + "_" + System.currentTimeMillis() + "_" + Integer.toHexString(new Random().nextInt());
+    }
+
+    static String withPrefix(String prefix) {
+        return prefix + "_" + counter.incrementAndGet() + "_" + System.currentTimeMillis();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Config hash registry (label per config hash)
+// -----------------------------------------------------------------------------
+
+final class ConfigHashRegistry {
+    private final Map<String, String> labelByHashHex = new ConcurrentHashMap<>();
+
+    void register(String configHashHex, String label) { labelByHashHex.put(configHashHex, label); }
+    String getLabel(String configHashHex) { return labelByHashHex.get(configHashHex); }
+}
+
+// -----------------------------------------------------------------------------
+// Dataset hash registry
+// -----------------------------------------------------------------------------
+
+final class DatasetHashRegistry {
+    private final Map<String, String> labelByHashHex = new ConcurrentHashMap<>();
+
+    void register(String datasetHashHex, String label) { labelByHashHex.put(datasetHashHex, label); }
+    String getLabel(String datasetHashHex) { return labelByHashHex.get(datasetHashHex); }
+}
+
