@@ -1477,3 +1477,90 @@ final class CmdPage implements Command {
     @Override public String usage() { return "page <pageSize> <pageIndex>"; }
     @Override
     public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.size() < 2) { out.println("Usage: " + usage()); return; }
+        int pageSize = Integer.parseInt(args.get(0));
+        int pageIndex = Integer.parseInt(args.get(1));
+        RunPaginator p = new RunPaginator(registry.getAllRuns(), pageSize);
+        for (RunRecord r : p.page(pageIndex)) {
+            out.println(r.getRunId() + " | tier=" + r.getModelTier());
+        }
+        out.println("Page " + pageIndex + " of " + p.pageCount());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Quorum stats command
+// -----------------------------------------------------------------------------
+
+final class CmdQuorumStats implements Command {
+    @Override public String name() { return "quorum-stats"; }
+    @Override public String usage() { return "quorum-stats"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        QuorumStatsAggregator agg = new QuorumStatsAggregator(registry);
+        out.println("Total runs: " + agg.totalRuns());
+        out.println("Total validators: " + agg.totalValidators());
+        out.println("Runs with quorum: " + agg.runsWithQuorum());
+        out.println("Runs with positive quorum: " + agg.runsWithPositiveQuorum());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Run age command
+// -----------------------------------------------------------------------------
+
+final class CmdRunAge implements Command {
+    @Override public String name() { return "run-age"; }
+    @Override public String usage() { return "run-age <runId>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.isEmpty()) { out.println("Usage: " + usage()); return; }
+        RunRecord r = registry.getRun(args.get(0));
+        if (r == null) { out.println("Run not found"); return; }
+        long age = RunAgeCalculator.ageSecondsNow(r);
+        out.println("Run age: " + age + " seconds");
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Tier name command
+// -----------------------------------------------------------------------------
+
+final class CmdTierName implements Command {
+    @Override public String name() { return "tier-name"; }
+    @Override public String usage() { return "tier-name <1|2|3|4>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.isEmpty()) { out.println("Usage: " + usage()); return; }
+        int tier = Integer.parseInt(args.get(0));
+        out.println(ModelTierLabels.name(tier));
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Epoch bucket command
+// -----------------------------------------------------------------------------
+
+final class CmdEpochBucket implements Command {
+    @Override public String name() { return "epoch-bucket"; }
+    @Override public String usage() { return "epoch-bucket <epochCount>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.isEmpty()) { out.println("Usage: " + usage()); return; }
+        int n = Integer.parseInt(args.get(0));
+        int bucket = EpochBucketUtil.getBucket(n);
+        out.println("Bucket: " + bucket + " (" + EpochBucketUtil.getBucketLabel(bucket) + ")");
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Summary DTO list command
+// -----------------------------------------------------------------------------
+
+final class CmdSummaries implements Command {
+    @Override public String name() { return "summaries"; }
+    @Override public String usage() { return "summaries [limit]"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        int limit = args.isEmpty() ? 20 : Integer.parseInt(args.get(0));
+        List<RunRecord> runs = new ArrayList<>(registry.getAllRuns());
