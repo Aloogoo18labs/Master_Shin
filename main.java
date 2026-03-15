@@ -172,3 +172,90 @@ final class LocalYangGoRegistry {
 
     RunRecord registerRun(byte[] datasetHash, byte[] configHash, int modelTier, int epochCount, String coordinator) {
         if (!coordinatorWhitelist.contains(coordinator)) throw new IllegalStateException("Coordinator not whitelisted");
+        if (trainingPaused) throw new IllegalStateException("Training paused");
+        if (modelTier < 1 || modelTier > 4) throw new IllegalArgumentException("Invalid model tier");
+        if (epochCount < 1 || epochCount > 10000) throw new IllegalArgumentException("Invalid epoch count");
+        String runId = generateRunId();
+        RunRecord r = new RunRecord(runId, datasetHash, configHash, modelTier, epochCount, coordinator);
+        runs.put(runId, r);
+        return r;
+    }
+
+    void attachCheckpoint(String runId, byte[] checkpointHash, String coordinator) {
+        RunRecord r = runs.get(runId);
+        if (r == null) throw new NoSuchElementException("Run not found");
+        if (!r.getCoordinator().equals(coordinator)) throw new IllegalStateException("Not coordinator");
+        if (r.isFinalized()) throw new IllegalStateException("Run already finalized");
+        r.addCheckpoint(checkpointHash);
+    }
+
+    void finalizeRun(String runId, String coordinator) {
+        RunRecord r = runs.get(runId);
+        if (r == null) throw new NoSuchElementException("Run not found");
+        if (!r.getCoordinator().equals(coordinator)) throw new IllegalStateException("Not coordinator");
+        if (r.isFinalized()) throw new IllegalStateException("Run already finalized");
+        r.setFinalized(true);
+    }
+
+    void attestRun(String runId, String validatorAddress, boolean approved) {
+        RunRecord r = runs.get(runId);
+        if (r == null) throw new NoSuchElementException("Run not found");
+        if (!r.isFinalized()) throw new IllegalStateException("Run not finalized");
+        ValidatorState v = validators.get(validatorAddress);
+        if (v == null) throw new IllegalStateException("Validator not registered");
+        if (v.hasAttested(runId)) throw new IllegalStateException("Already attested");
+        v.attest(runId);
+        r.addAttestation(approved);
+    }
+
+    ValidatorState registerValidator(String address, BigInteger stake) {
+        if (stake.compareTo(BigInteger.valueOf(100_000_000_000_000_000L)) < 0) throw new IllegalArgumentException("Min stake 0.1 ETH");
+        ValidatorState v = new ValidatorState(address, stake);
+        validators.put(address, v);
+        return v;
+    }
+
+    RunRecord getRun(String runId) { return runs.get(runId); }
+    Collection<RunRecord> getAllRuns() { return new ArrayList<>(runs.values()); }
+    Collection<ValidatorState> getAllValidators() { return new ArrayList<>(validators.values()); }
+    int getRunCount() { return runs.size(); }
+    int getValidatorCount() { return validators.size(); }
+    void setTrainingPaused(boolean p) { trainingPaused = p; }
+    boolean isTrainingPaused() { return trainingPaused; }
+}
+
+// -----------------------------------------------------------------------------
+// CLI command handlers
+// -----------------------------------------------------------------------------
+
+interface Command {
+    String name();
+    String usage();
+    void run(List<String> args, LocalYangGoRegistry registry, Print out);
+}
+
+final class CmdRegisterRun implements Command {
+    @Override public String name() { return "register-run"; }
+    @Override public String usage() { return "register-run <coordinator> <modelTier> <epochCount> [datasetLabel] [configLabel]"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.size() < 3) { out.println("Usage: " + usage()); return; }
+        String coordinator = args.get(0);
+        int modelTier = Integer.parseInt(args.get(1));
+        int epochCount = Integer.parseInt(args.get(2));
+        String datasetLabel = args.size() > 3 ? args.get(3) : "dataset-" + System.currentTimeMillis();
+        String configLabel = args.size() > 4 ? args.get(4) : "config-" + System.currentTimeMillis();
+        byte[] datasetHash = HashUtils.sha256(datasetLabel);
+        byte[] configHash = HashUtils.sha256(configLabel);
+        RunRecord r = registry.registerRun(datasetHash, configHash, modelTier, epochCount, coordinator);
+        out.println("Registered run: " + r.getRunId());
+    }
+}
+
+final class CmdAttachCheckpoint implements Command {
+    @Override public String name() { return "attach-checkpoint"; }
+    @Override public String usage() { return "attach-checkpoint <runId> <coordinator> [checkpointLabel]"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.size() < 3) { out.println("Usage: " + usage()); return; }
+        String runId = args.get(0);
