@@ -1216,3 +1216,90 @@ final class CmdFee implements Command {
         int tier = Integer.parseInt(args.get(0));
         BigInteger fee = FeeCalculator.feeForTier(tier);
         out.println("Fee for tier " + tier + ": " + fee + " wei");
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CmdQuorumNeeded - Attestations needed for quorum
+// -----------------------------------------------------------------------------
+
+final class CmdQuorumNeeded implements Command {
+    @Override public String name() { return "quorum-needed"; }
+    @Override public String usage() { return "quorum-needed"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        int n = registry.getValidatorCount();
+        int needed = QuorumCalculator.attestationsNeededForQuorum(n);
+        out.println("Validators: " + n + " | attestations needed for quorum: " + needed);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CmdLoadCsv - Load runs from CSV-like lines (batch)
+// -----------------------------------------------------------------------------
+
+final class CmdLoadCsv implements Command {
+    @Override public String name() { return "load-csv"; }
+    @Override public String usage() { return "load-csv <coordinator> <line1> [line2 ...] or load-csv <coordinator> @<file>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.size() < 2) { out.println("Usage: " + usage()); return; }
+        String coord = args.get(0);
+        List<String> lines = new ArrayList<>();
+        if (args.get(1).startsWith("@")) {
+            String path = args.get(1).substring(1);
+            try (java.util.Scanner sc = new java.util.Scanner(new java.io.File(path), StandardCharsets.UTF_8)) {
+                while (sc.hasNextLine()) lines.add(sc.nextLine());
+            } catch (java.io.IOException e) {
+                out.println("Error: " + e.getMessage());
+                return;
+            }
+        } else {
+            lines = args.subList(1, args.size());
+        }
+        CsvRunLoader loader = new CsvRunLoader(registry);
+        int count = loader.loadAll(lines, coord);
+        out.println("Loaded " + count + " runs.");
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CmdAddPreset - Add config preset
+// -----------------------------------------------------------------------------
+
+final class CmdAddPreset implements Command {
+    @Override public String name() { return "add-preset"; }
+    @Override public String usage() { return "add-preset <id> <label> <tier> <suggestedEpochs>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.size() < 4) { out.println("Usage: " + usage()); return; }
+        PresetManager pm = new PresetManager();
+        pm.add(args.get(0), args.get(1), Integer.parseInt(args.get(2)), Integer.parseInt(args.get(3)));
+        out.println("Preset added (in-memory): " + args.get(0));
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CmdEpochSim - Simulate epochs for a run
+// -----------------------------------------------------------------------------
+
+final class CmdEpochSim implements Command {
+    @Override public String name() { return "epoch-sim"; }
+    @Override public String usage() { return "epoch-sim <epochCount>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.isEmpty()) { out.println("Usage: " + usage()); return; }
+        int n = Integer.parseInt(args.get(0));
+        EpochSimulator sim = new EpochSimulator(n);
+        while (sim.nextEpoch()) { }
+        out.println("Simulated " + sim.getCurrentEpoch() + " epochs. Complete: " + sim.isComplete());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CmdTagIndex - Index run by tag
+// -----------------------------------------------------------------------------
+
+final class CmdTagIndex implements Command {
+    private final TagIndex tagIndex = new TagIndex();
+
