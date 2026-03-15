@@ -520,3 +520,90 @@ public final class Master_Shin {
     private static void runBatch(String[] args, LocalYangGoRegistry registry, Map<String, Command> commands, Print out) {
         for (int i = 1; i < args.length; i++) {
             String line = args[i];
+            List<String> parts = tokenize(line);
+            if (parts.isEmpty()) continue;
+            String cmdName = parts.get(0).toLowerCase();
+            List<String> cmdArgs = parts.subList(1, parts.size());
+            Command cmd = commands.get(cmdName);
+            if (cmd != null) {
+                try { cmd.run(cmdArgs, registry, out); } catch (Exception e) { out.println("Error: " + e.getMessage()); }
+            }
+        }
+    }
+
+    private static List<String> tokenize(String line) {
+        List<String> out = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        boolean inQuote = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '"') { inQuote = !inQuote; continue; }
+            if (!inQuote && (c == ' ' || c == '\t')) {
+                if (cur.length() > 0) { out.add(cur.toString()); cur.setLength(0); }
+                continue;
+            }
+            cur.append(c);
+        }
+        if (cur.length() > 0) out.add(cur.toString());
+        return out;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Run batch loader - Load multiple runs from descriptor
+// -----------------------------------------------------------------------------
+
+final class RunBatchLoader {
+    private final LocalYangGoRegistry registry;
+
+    RunBatchLoader(LocalYangGoRegistry registry) { this.registry = registry; }
+
+    int loadFromDescriptor(List<String> lines, String defaultCoordinator) {
+        int count = 0;
+        for (String line : lines) {
+            line = line.trim();
+            if (line.startsWith("#") || line.isEmpty()) continue;
+            String[] parts = line.split("\\s+");
+            if (parts.length < 3) continue;
+            String coord = parts.length > 3 ? parts[3] : defaultCoordinator;
+            byte[] dsHash = HashUtils.sha256(parts.length > 4 ? parts[4] : "ds-" + count);
+            byte[] cfgHash = HashUtils.sha256(parts.length > 5 ? parts[5] : "cfg-" + count);
+            int tier = Integer.parseInt(parts[1]);
+            int epochs = Integer.parseInt(parts[2]);
+            registry.registerRun(dsHash, cfgHash, tier, epochs, coord);
+            count++;
+        }
+        return count;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Config manager - Load/save coordinator whitelist and defaults
+// -----------------------------------------------------------------------------
+
+final class ConfigManager {
+    private final Properties props = new Properties();
+    private final String path;
+
+    ConfigManager(String path) { this.path = path; }
+
+    void set(String key, String value) { props.setProperty(key, value); }
+    String get(String key) { return props.getProperty(key); }
+    String get(String key, String def) { return props.getProperty(key, def); }
+    void load(java.io.InputStream in) throws java.io.IOException { props.load(in); }
+    void store(java.io.OutputStream out, String comments) throws java.io.IOException { props.store(out, comments); }
+}
+
+// -----------------------------------------------------------------------------
+// Epoch simulator - Simulate epoch completion for a run
+// -----------------------------------------------------------------------------
+
+final class EpochSimulator {
+    private final int epochCount;
+    private int currentEpoch;
+    private final List<byte[]> gradientNorms = new ArrayList<>();
+
+    EpochSimulator(int epochCount) {
+        this.epochCount = epochCount;
+        this.currentEpoch = 0;
+    }
