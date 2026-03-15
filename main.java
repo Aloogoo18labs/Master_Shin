@@ -1564,3 +1564,75 @@ final class CmdSummaries implements Command {
     public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
         int limit = args.isEmpty() ? 20 : Integer.parseInt(args.get(0));
         List<RunRecord> runs = new ArrayList<>(registry.getAllRuns());
+        for (int i = 0; i < Math.min(limit, runs.size()); i++) {
+            RunSummaryDto dto = new RunSummaryDto(runs.get(i));
+            out.println(dto.runId + " | " + dto.modelTier + " | " + dto.epochCount + " | " + dto.positiveAttestations + "/" + dto.totalAttestations);
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Validator summaries command
+// -----------------------------------------------------------------------------
+
+final class CmdValidatorSummaries implements Command {
+    @Override public String name() { return "validator-summaries"; }
+    @Override public String usage() { return "validator-summaries"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        for (ValidatorState v : registry.getAllValidators()) {
+            ValidatorSummaryDto dto = new ValidatorSummaryDto(v);
+            out.println(dto.address + " | stake=" + dto.stake + " | attested=" + dto.attestedCount);
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Existence check command
+// -----------------------------------------------------------------------------
+
+final class CmdExists implements Command {
+    @Override public String name() { return "exists"; }
+    @Override public String usage() { return "exists <runId>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.isEmpty()) { out.println("Usage: " + usage()); return; }
+        RunExistenceChecker c = new RunExistenceChecker(registry);
+        out.println("Exists: " + c.exists(args.get(0)));
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Bounds helper - Min/max run ID and total count
+// -----------------------------------------------------------------------------
+
+final class BoundsHelper {
+    static int totalRuns(LocalYangGoRegistry registry) { return registry.getRunCount(); }
+    static boolean inBounds(String runId, LocalYangGoRegistry registry) { return registry.getRun(runId) != null; }
+}
+
+// -----------------------------------------------------------------------------
+// Demo data generator - Generate sample runs for testing
+// -----------------------------------------------------------------------------
+
+final class DemoDataGenerator {
+    static void generate(LocalYangGoRegistry registry, int runCount, String coordinator) {
+        for (int i = 0; i < runCount; i++) {
+            byte[] ds = HashUtils.sha256("demo-ds-" + i);
+            byte[] cfg = HashUtils.sha256("demo-cfg-" + i);
+            registry.registerRun(ds, cfg, 1 + (i % 4), 10 * (i + 1), coordinator);
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Run ID parser - Parse run_<n>_<ts> format
+// -----------------------------------------------------------------------------
+
+final class RunIdParser {
+    static long getSequence(String runId) {
+        if (runId == null || !runId.startsWith("run_")) return -1;
+        String[] parts = runId.split("_");
+        return parts.length >= 2 ? Long.parseLong(parts[1]) : -1;
+    }
+}
