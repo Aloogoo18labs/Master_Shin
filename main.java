@@ -1303,3 +1303,90 @@ final class CmdEpochSim implements Command {
 final class CmdTagIndex implements Command {
     private final TagIndex tagIndex = new TagIndex();
 
+    @Override public String name() { return "tag-index"; }
+    @Override public String usage() { return "tag-index add <runId> <tag> | tag-index list <tag>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.size() < 2) { out.println("Usage: " + usage()); return; }
+        if ("add".equals(args.get(0)) && args.size() >= 3) {
+            tagIndex.index(args.get(1), args.get(2));
+            out.println("Indexed " + args.get(1) + " under tag " + args.get(2));
+        } else if ("list".equals(args.get(0))) {
+            for (String runId : tagIndex.getRunIds(args.get(1))) out.println(runId);
+        } else {
+            out.println("Usage: " + usage());
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Additional constants and defaults
+// -----------------------------------------------------------------------------
+
+final class YangGoDefaults {
+    static final int DEFAULT_MAX_EPOCHS = 10000;
+    static final int MIN_EPOCHS = 1;
+    static final int MAX_MODEL_TIER = 4;
+    static final BigInteger MIN_VALIDATOR_STAKE_WEI = BigInteger.valueOf(100_000_000_000_000_000L);
+    static final int QUORUM_BPS = 6600;
+    static final int BPS_DENOM = 10000;
+}
+
+// -----------------------------------------------------------------------------
+// Run comparator by registered time
+// -----------------------------------------------------------------------------
+
+final class RunByTimeComparator implements Comparator<RunRecord> {
+    @Override
+    public int compare(RunRecord a, RunRecord b) {
+        return Long.compare(a.getRegisteredAt(), b.getRegisteredAt());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Run comparator by attestation count
+// -----------------------------------------------------------------------------
+
+final class RunByAttestationComparator implements Comparator<RunRecord> {
+    @Override
+    public int compare(RunRecord a, RunRecord b) {
+        int c = Integer.compare(b.getTotalAttestations(), a.getTotalAttestations());
+        if (c != 0) return c;
+        return Integer.compare(b.getPositiveAttestations(), a.getPositiveAttestations());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Sort runs command
+// -----------------------------------------------------------------------------
+
+final class CmdSortRuns implements Command {
+    @Override public String name() { return "sort-runs"; }
+    @Override public String usage() { return "sort-runs by-time | by-attestations [limit]"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.isEmpty()) { out.println("Usage: " + usage()); return; }
+        List<RunRecord> list = new ArrayList<>(registry.getAllRuns());
+        if ("by-time".equals(args.get(0))) list.sort(new RunByTimeComparator());
+        else if ("by-attestations".equals(args.get(0))) list.sort(new RunByAttestationComparator());
+        else { out.println("Unknown sort: " + args.get(0)); return; }
+        int limit = args.size() > 1 ? Integer.parseInt(args.get(1)) : 20;
+        for (int i = 0; i < Math.min(limit, list.size()); i++) {
+            RunRecord r = list.get(i);
+            out.println(r.getRunId() + " | " + r.getTotalAttestations() + " attestations");
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Validator by stake comparator
+// -----------------------------------------------------------------------------
+
+final class ValidatorByStakeComparator implements Comparator<ValidatorState> {
+    @Override
+    public int compare(ValidatorState a, ValidatorState b) {
+        return b.getStake().compareTo(a.getStake());
+    }
+}
+
+// -----------------------------------------------------------------------------
