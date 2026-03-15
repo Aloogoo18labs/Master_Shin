@@ -346,3 +346,90 @@ final class CmdWhitelist implements Command {
     @Override public String usage() { return "whitelist add|remove <address>"; }
     @Override
     public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.size() < 2) { out.println("Usage: " + usage()); return; }
+        String op = args.get(0).toLowerCase();
+        String address = args.get(1);
+        if ("add".equals(op)) { registry.addCoordinator(address); out.println("Added: " + address); }
+        else if ("remove".equals(op)) { registry.removeCoordinator(address); out.println("Removed: " + address); }
+        else out.println("Unknown op: " + op);
+    }
+}
+
+final class CmdPause implements Command {
+    @Override public String name() { return "pause"; }
+    @Override public String usage() { return "pause on|off"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.isEmpty()) { out.println("Usage: " + usage()); return; }
+        boolean on = "on".equalsIgnoreCase(args.get(0));
+        registry.setTrainingPaused(on);
+        out.println("Training paused: " + on);
+    }
+}
+
+final class CmdStats implements Command {
+    @Override public String name() { return "stats"; }
+    @Override public String usage() { return "stats"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        out.println("Runs: " + registry.getRunCount());
+        out.println("Validators: " + registry.getValidatorCount());
+        out.println("Paused: " + registry.isTrainingPaused());
+    }
+}
+
+final class CmdHelp implements Command {
+    private final Map<String, Command> commands;
+    CmdHelp(Map<String, Command> commands) { this.commands = commands; }
+    @Override public String name() { return "help"; }
+    @Override public String usage() { return "help [command]"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.isEmpty()) {
+            commands.keySet().stream().sorted().forEach(c -> out.println("  " + c));
+            return;
+        }
+        Command c = commands.get(args.get(0));
+        if (c != null) out.println(c.usage());
+        else out.println("Unknown command: " + args.get(0));
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Print abstraction (stdout / GUI later)
+// -----------------------------------------------------------------------------
+
+interface Print {
+    void println(String s);
+}
+
+final class StdOutPrint implements Print {
+    @Override public void println(String s) { System.out.println(s); }
+}
+
+// -----------------------------------------------------------------------------
+// Main application entry and REPL
+// -----------------------------------------------------------------------------
+
+public final class Master_Shin {
+
+    private static final String BANNER = "Master_Shin - YangGo AI Training Coordinator v2";
+    private static final String PROMPT = "yanggo> ";
+
+    public static void main(String[] args) {
+        LocalYangGoRegistry registry = new LocalYangGoRegistry();
+        registry.addCoordinator("0x7f3a91c2e5b4d806f9b0c1e3d5a7f2e8c4b6a0d9");
+        registry.addCoordinator("0x2b4c6d8e0f1a3b5c7d9e1f3a5b7c9d0e2f4a6b8");
+        Map<String, Command> commands = new HashMap<>();
+        commands.put("register-run", new CmdRegisterRun());
+        commands.put("attach-checkpoint", new CmdAttachCheckpoint());
+        commands.put("finalize-run", new CmdFinalizeRun());
+        commands.put("attest", new CmdAttest());
+        commands.put("register-validator", new CmdRegisterValidator());
+        commands.put("list-runs", new CmdListRuns());
+        commands.put("show-run", new CmdShowRun());
+        commands.put("whitelist", new CmdWhitelist());
+        commands.put("pause", new CmdPause());
+        commands.put("stats", new CmdStats());
+        commands.put("export", new CmdExport());
+        commands.put("query-tier", new CmdQueryByTier());
