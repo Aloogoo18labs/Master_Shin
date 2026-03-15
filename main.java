@@ -868,3 +868,90 @@ final class CheckpointBatchBuilder {
 // -----------------------------------------------------------------------------
 // Domain separator (EIP-712 style) - for off-chain signing
 // -----------------------------------------------------------------------------
+
+final class DomainSeparatorUtil {
+    static String domainTypeHash() { return "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"; }
+    static String attestationTypeHash() { return "Attest(uint256 runId,bool approved,uint256 nonce)"; }
+}
+
+// -----------------------------------------------------------------------------
+// Nonce store per run (replay protection)
+// -----------------------------------------------------------------------------
+
+final class RunNonceStore {
+    private final Map<String, AtomicLong> nonceByRunId = new ConcurrentHashMap<>();
+
+    long get(String runId) {
+        return nonceByRunId.computeIfAbsent(runId, k -> new AtomicLong(0)).get();
+    }
+
+    long increment(String runId) {
+        return nonceByRunId.computeIfAbsent(runId, k -> new AtomicLong(0)).incrementAndGet();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Paginator for run list
+// -----------------------------------------------------------------------------
+
+final class RunPaginator {
+    private final List<RunRecord> all;
+    private final int pageSize;
+
+    RunPaginator(Collection<RunRecord> all, int pageSize) {
+        this.all = new ArrayList<>(all);
+        this.pageSize = pageSize;
+    }
+
+    int pageCount() {
+        if (pageSize <= 0) return 0;
+        return (all.size() + pageSize - 1) / pageSize;
+    }
+
+    List<RunRecord> page(int pageIndex) {
+        if (pageIndex < 0 || pageSize <= 0) return Collections.emptyList();
+        int start = pageIndex * pageSize;
+        if (start >= all.size()) return Collections.emptyList();
+        int end = Math.min(start + pageSize, all.size());
+        return new ArrayList<>(all.subList(start, end));
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Epoch bucket classifier
+// -----------------------------------------------------------------------------
+
+final class EpochBucketUtil {
+    static int getBucket(int epochCount) {
+        if (epochCount <= 10) return 1;
+        if (epochCount <= 100) return 2;
+        if (epochCount <= 500) return 3;
+        if (epochCount <= 1000) return 4;
+        return 5;
+    }
+
+    static String getBucketLabel(int bucket) {
+        if (bucket == 1) return "small";
+        if (bucket == 2) return "medium";
+        if (bucket == 3) return "large";
+        if (bucket == 4) return "xlarge";
+        if (bucket == 5) return "mega";
+        return "unknown";
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Run existence checker
+// -----------------------------------------------------------------------------
+
+final class RunExistenceChecker {
+    private final LocalYangGoRegistry registry;
+
+    RunExistenceChecker(LocalYangGoRegistry registry) { this.registry = registry; }
+
+    boolean exists(String runId) { return registry.getRun(runId) != null; }
+    int totalRuns() { return registry.getRunCount(); }
+}
+
+// -----------------------------------------------------------------------------
+// Version info
