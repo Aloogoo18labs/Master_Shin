@@ -607,3 +607,90 @@ final class EpochSimulator {
         this.epochCount = epochCount;
         this.currentEpoch = 0;
     }
+
+    boolean nextEpoch() {
+        if (currentEpoch >= epochCount) return false;
+        gradientNorms.add(HashUtils.sha256("grad-" + currentEpoch + "-" + System.nanoTime()));
+        currentEpoch++;
+        return true;
+    }
+
+    int getCurrentEpoch() { return currentEpoch; }
+    List<byte[]> getGradientNorms() { return new ArrayList<>(gradientNorms); }
+    boolean isComplete() { return currentEpoch >= epochCount; }
+}
+
+// -----------------------------------------------------------------------------
+// Gradient snapshot cache - Cache gradient norm hashes per run/epoch
+// -----------------------------------------------------------------------------
+
+final class GradientSnapshotCache {
+    private final Map<String, Map<Integer, byte[]>> cache = new ConcurrentHashMap<>();
+
+    void put(String runId, int epochIndex, byte[] hash) {
+        cache.computeIfAbsent(runId, k -> new ConcurrentHashMap<>()).put(epochIndex, hash);
+    }
+
+    byte[] get(String runId, int epochIndex) {
+        Map<Integer, byte[]> runMap = cache.get(runId);
+        return runMap == null ? null : runMap.get(epochIndex);
+    }
+
+    int countForRun(String runId) {
+        Map<Integer, byte[]> runMap = cache.get(runId);
+        return runMap == null ? 0 : runMap.size();
+    }
+
+    void clearRun(String runId) { cache.remove(runId); }
+}
+
+// -----------------------------------------------------------------------------
+// Attestation batch - Batch multiple attestations for submission
+// -----------------------------------------------------------------------------
+
+final class AttestationBatch {
+    private final List<String> runIds = new ArrayList<>();
+    private final List<Boolean> approved = new ArrayList<>();
+
+    void add(String runId, boolean approved) {
+        runIds.add(runId);
+        this.approved.add(approved);
+    }
+
+    int size() { return runIds.size(); }
+
+    void submit(LocalYangGoRegistry registry, String validatorAddress) {
+        for (int i = 0; i < runIds.size(); i++) {
+            try {
+                registry.attestRun(runIds.get(i), validatorAddress, approved.get(i));
+            } catch (Exception ignored) { }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Run query service - Query runs by tier, finalized, quorum
+// -----------------------------------------------------------------------------
+
+final class RunQueryService {
+    private final LocalYangGoRegistry registry;
+
+    RunQueryService(LocalYangGoRegistry registry) { this.registry = registry; }
+
+    List<RunRecord> byModelTier(int tier) {
+        return registry.getAllRuns().stream().filter(r -> r.getModelTier() == tier).collect(Collectors.toList());
+    }
+
+    List<RunRecord> finalizedOnly() {
+        return registry.getAllRuns().stream().filter(RunRecord::isFinalized).collect(Collectors.toList());
+    }
+
+    List<RunRecord> withPositiveQuorum() {
+        return registry.getAllRuns().stream()
+            .filter(r -> QuorumCalculator.positiveQuorumReached(r.getPositiveAttestations(), r.getTotalAttestations()))
+            .collect(Collectors.toList());
+    }
+
+    List<RunRecord> byCoordinator(String coordinator) {
+        return registry.getAllRuns().stream().filter(r -> r.getCoordinator().equals(coordinator)).collect(Collectors.toList());
+    }
