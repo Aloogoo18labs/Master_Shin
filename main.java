@@ -955,3 +955,90 @@ final class RunExistenceChecker {
 
 // -----------------------------------------------------------------------------
 // Version info
+// -----------------------------------------------------------------------------
+
+final class YangGoVersionInfo {
+    static final int VERSION = 2;
+    static final String LABEL = "YangGo AI Training Registry v2";
+}
+
+// -----------------------------------------------------------------------------
+// Batch run registration from CSV-like lines
+// -----------------------------------------------------------------------------
+
+final class CsvRunLoader {
+    private final LocalYangGoRegistry registry;
+
+    CsvRunLoader(LocalYangGoRegistry registry) { this.registry = registry; }
+
+    int load(String line, String coordinator) {
+        String[] parts = line.split(",");
+        if (parts.length < 3) return 0;
+        int tier = Integer.parseInt(parts[0].trim());
+        int epochs = Integer.parseInt(parts[1].trim());
+        String dsLabel = parts.length > 2 ? parts[2].trim() : "ds";
+        byte[] dsHash = HashUtils.sha256(dsLabel);
+        byte[] cfgHash = HashUtils.sha256("cfg-" + dsLabel);
+        registry.registerRun(dsHash, cfgHash, tier, epochs, coordinator);
+        return 1;
+    }
+
+    int loadAll(List<String> lines, String coordinator) {
+        int count = 0;
+        for (String line : lines) {
+            if (line.trim().isEmpty() || line.trim().startsWith("#")) continue;
+            count += load(line, coordinator);
+        }
+        return count;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Async run submitter (simulated delay)
+// -----------------------------------------------------------------------------
+
+final class AsyncRunSubmitter {
+    private final LocalYangGoRegistry registry;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    AsyncRunSubmitter(LocalYangGoRegistry registry) { this.registry = registry; }
+
+    Future<RunRecord> submitAsync(byte[] datasetHash, byte[] configHash, int modelTier, int epochCount, String coordinator) {
+        return executor.submit(() -> {
+            Thread.sleep(10);
+            return registry.registerRun(datasetHash, configHash, modelTier, epochCount, coordinator);
+        });
+    }
+
+    void shutdown() { executor.shutdown(); }
+}
+
+// -----------------------------------------------------------------------------
+// Run summary DTO
+// -----------------------------------------------------------------------------
+
+final class RunSummaryDto {
+    final String runId;
+    final int modelTier;
+    final int epochCount;
+    final String coordinator;
+    final boolean finalized;
+    final int positiveAttestations;
+    final int totalAttestations;
+    final int checkpointCount;
+
+    RunSummaryDto(RunRecord r) {
+        this.runId = r.getRunId();
+        this.modelTier = r.getModelTier();
+        this.epochCount = r.getEpochCount();
+        this.coordinator = r.getCoordinator();
+        this.finalized = r.isFinalized();
+        this.positiveAttestations = r.getPositiveAttestations();
+        this.totalAttestations = r.getTotalAttestations();
+        this.checkpointCount = r.getCheckpoints().size();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Validator summary DTO
+// -----------------------------------------------------------------------------
