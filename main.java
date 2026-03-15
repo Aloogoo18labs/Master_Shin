@@ -433,3 +433,90 @@ public final class Master_Shin {
         commands.put("stats", new CmdStats());
         commands.put("export", new CmdExport());
         commands.put("query-tier", new CmdQueryByTier());
+        commands.put("query-quorum", new CmdQueryQuorum());
+        commands.put("list-validators", new CmdListValidators());
+        commands.put("fee", new CmdFee());
+        commands.put("quorum-needed", new CmdQuorumNeeded());
+        commands.put("load-csv", new CmdLoadCsv());
+        commands.put("add-preset", new CmdAddPreset());
+        commands.put("epoch-sim", new CmdEpochSim());
+        commands.put("tag-index", new CmdTagIndex());
+        commands.put("sort-runs", new CmdSortRuns());
+        commands.put("sort-validators", new CmdSortValidators());
+        commands.put("health", new CmdHealth());
+        commands.put("version", new CmdVersion());
+        commands.put("attest-batch", new CmdAttestBatch());
+        commands.put("page", new CmdPage());
+        commands.put("quorum-stats", new CmdQuorumStats());
+        commands.put("run-age", new CmdRunAge());
+        commands.put("tier-name", new CmdTierName());
+        commands.put("epoch-bucket", new CmdEpochBucket());
+        commands.put("summaries", new CmdSummaries());
+        commands.put("validator-summaries", new CmdValidatorSummaries());
+        commands.put("exists", new CmdExists());
+        commands.put("help", new CmdHelp(commands));
+        commands.put("quit", new Command() {
+            @Override public String name() { return "quit"; }
+            @Override public String usage() { return "quit"; }
+            @Override public void run(List<String> a, LocalYangGoRegistry r, Print p) { System.exit(0); }
+        });
+        commands.put("exit", commands.get("quit"));
+
+        Print out = new StdOutPrint();
+        out.println(BANNER);
+        out.println("Commands: " + String.join(", ", commands.keySet()));
+        out.println("Type 'help' for usage.");
+
+        if (args.length > 0 && "--batch".equals(args[0])) {
+            runBatch(args, registry, commands, out);
+            return;
+        }
+        if (args.length > 0 && "--demo".equals(args[0])) {
+            runInteractiveDemo(registry, out);
+            runRepl(registry, commands, out);
+            return;
+        }
+
+        runRepl(registry, commands, out);
+    }
+
+    private static void runRepl(LocalYangGoRegistry registry, Map<String, Command> commands, Print out) {
+        Scanner sc = new Scanner(System.in);
+        while (true) {
+            System.out.print(PROMPT);
+            if (!sc.hasNextLine()) break;
+            String line = sc.nextLine().trim();
+            if (line.isEmpty()) continue;
+            List<String> parts = tokenize(line);
+            String cmdName = parts.get(0).toLowerCase();
+            List<String> cmdArgs = parts.subList(1, parts.size());
+            Command cmd = commands.get(cmdName);
+            if (cmd == null) {
+                out.println("Unknown command: " + cmdName);
+                continue;
+            }
+            try {
+                cmd.run(cmdArgs, registry, out);
+            } catch (Exception e) {
+                out.println("Error: " + e.getMessage());
+            }
+        }
+        sc.close();
+    }
+
+    private static void runInteractiveDemo(LocalYangGoRegistry registry, Print out) {
+        out.println("Demo: register 3 runs, add checkpoints, finalize, attest.");
+        String coord = "0x7f3a91c2e5b4d806f9b0c1e3d5a7f2e8c4b6a0d9";
+        registry.registerValidator("0x9e8d7c6b5a493827160504938271605049382716", BigInteger.valueOf(200_000_000_000_000_000L));
+        for (int i = 0; i < 3; i++) {
+            RunRecord r = registry.registerRun(HashUtils.sha256("ds-" + i), HashUtils.sha256("cfg-" + i), 1 + (i % 4), 10 * (i + 1), coord);
+            registry.attachCheckpoint(r.getRunId(), HashUtils.sha256("ckpt-" + i), coord);
+            registry.finalizeRun(r.getRunId(), coord);
+            registry.attestRun(r.getRunId(), "0x9e8d7c6b5a493827160504938271605049382716", true);
+        }
+        out.println("Demo complete. Use list-runs and show-run to inspect.");
+    }
+
+    private static void runBatch(String[] args, LocalYangGoRegistry registry, Map<String, Command> commands, Print out) {
+        for (int i = 1; i < args.length; i++) {
+            String line = args[i];
