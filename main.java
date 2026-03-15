@@ -1390,3 +1390,90 @@ final class ValidatorByStakeComparator implements Comparator<ValidatorState> {
 }
 
 // -----------------------------------------------------------------------------
+// CmdSortValidators
+// -----------------------------------------------------------------------------
+
+final class CmdSortValidators implements Command {
+    @Override public String name() { return "sort-validators"; }
+    @Override public String usage() { return "sort-validators"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        List<ValidatorState> list = new ArrayList<>(registry.getAllValidators());
+        list.sort(new ValidatorByStakeComparator());
+        for (ValidatorState v : list) {
+            out.println(v.getAddress() + " | " + v.getStake() + " wei");
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Health check
+// -----------------------------------------------------------------------------
+
+final class HealthCheck {
+    static boolean check(LocalYangGoRegistry registry) {
+        try {
+            registry.getRunCount();
+            registry.getValidatorCount();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CmdHealth
+// -----------------------------------------------------------------------------
+
+final class CmdHealth implements Command {
+    @Override public String name() { return "health"; }
+    @Override public String usage() { return "health"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        out.println("Registry healthy: " + HealthCheck.check(registry));
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CmdVersion
+// -----------------------------------------------------------------------------
+
+final class CmdVersion implements Command {
+    @Override public String name() { return "version"; }
+    @Override public String usage() { return "version"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        out.println(YangGoVersionInfo.LABEL + " v" + YangGoVersionInfo.VERSION);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Batch attestation command
+// -----------------------------------------------------------------------------
+
+final class CmdAttestBatch implements Command {
+    @Override public String name() { return "attest-batch"; }
+    @Override public String usage() { return "attest-batch <validator> <runId1> <true|false> [runId2] [true|false] ..."; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.size() < 3 || (args.size() - 1) % 2 != 0) { out.println("Usage: " + usage()); return; }
+        String validator = args.get(0);
+        AttestationBatch batch = new AttestationBatch();
+        for (int i = 1; i < args.size(); i += 2) {
+            batch.add(args.get(i), Boolean.parseBoolean(args.get(i + 1)));
+        }
+        batch.submit(registry, validator);
+        out.println("Submitted " + batch.size() + " attestations.");
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Paginator command
+// -----------------------------------------------------------------------------
+
+final class CmdPage implements Command {
+    @Override public String name() { return "page"; }
+    @Override public String usage() { return "page <pageSize> <pageIndex>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
