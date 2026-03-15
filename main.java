@@ -259,3 +259,90 @@ final class CmdAttachCheckpoint implements Command {
     public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
         if (args.size() < 3) { out.println("Usage: " + usage()); return; }
         String runId = args.get(0);
+        String coordinator = args.get(1);
+        String label = args.size() > 2 ? args.get(2) : "ckpt-" + System.currentTimeMillis();
+        byte[] hash = HashUtils.sha256(label);
+        registry.attachCheckpoint(runId, hash, coordinator);
+        out.println("Checkpoint attached to " + runId);
+    }
+}
+
+final class CmdFinalizeRun implements Command {
+    @Override public String name() { return "finalize-run"; }
+    @Override public String usage() { return "finalize-run <runId> <coordinator>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.size() < 2) { out.println("Usage: " + usage()); return; }
+        registry.finalizeRun(args.get(0), args.get(1));
+        out.println("Run finalized: " + args.get(0));
+    }
+}
+
+final class CmdAttest implements Command {
+    @Override public String name() { return "attest"; }
+    @Override public String usage() { return "attest <runId> <validatorAddress> <approved true|false>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.size() < 3) { out.println("Usage: " + usage()); return; }
+        String runId = args.get(0);
+        String validator = args.get(1);
+        boolean approved = Boolean.parseBoolean(args.get(2));
+        registry.attestRun(runId, validator, approved);
+        out.println("Attestation recorded: " + runId + " by " + validator + " approved=" + approved);
+    }
+}
+
+final class CmdRegisterValidator implements Command {
+    @Override public String name() { return "register-validator"; }
+    @Override public String usage() { return "register-validator <address> <stakeWei>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.size() < 2) { out.println("Usage: " + usage()); return; }
+        String address = args.get(0);
+        BigInteger stake = new BigInteger(args.get(1));
+        registry.registerValidator(address, stake);
+        out.println("Validator registered: " + address);
+    }
+}
+
+final class CmdListRuns implements Command {
+    @Override public String name() { return "list-runs"; }
+    @Override public String usage() { return "list-runs [limit]"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        int limit = args.isEmpty() ? 50 : Integer.parseInt(args.get(0));
+        List<RunRecord> list = registry.getAllRuns().stream().limit(limit).collect(Collectors.toList());
+        for (RunRecord r : list) {
+            boolean posQuorum = QuorumCalculator.positiveQuorumReached(r.getPositiveAttestations(), r.getTotalAttestations());
+            out.println(r.getRunId() + " | tier=" + r.getModelTier() + " epochs=" + r.getEpochCount() + " final=" + r.isFinalized() + " pos=" + r.getPositiveAttestations() + "/" + r.getTotalAttestations() + " quorum=" + posQuorum);
+        }
+        out.println("Total: " + list.size());
+    }
+}
+
+final class CmdShowRun implements Command {
+    @Override public String name() { return "show-run"; }
+    @Override public String usage() { return "show-run <runId>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
+        if (args.isEmpty()) { out.println("Usage: " + usage()); return; }
+        RunRecord r = registry.getRun(args.get(0));
+        if (r == null) { out.println("Run not found"); return; }
+        out.println("RunId: " + r.getRunId());
+        out.println("Coordinator: " + r.getCoordinator());
+        out.println("ModelTier: " + r.getModelTier() + " EpochCount: " + r.getEpochCount());
+        out.println("DatasetHash: " + HashUtils.toHex(r.getDatasetHash()));
+        out.println("ConfigHash: " + HashUtils.toHex(r.getConfigHash()));
+        out.println("Finalized: " + r.isFinalized());
+        out.println("Attestations: " + r.getPositiveAttestations() + " / " + r.getTotalAttestations());
+        out.println("Checkpoints: " + r.getCheckpoints().size());
+        out.println("Quorum: " + QuorumCalculator.quorumReached(r.getTotalAttestations(), registry.getValidatorCount()));
+        out.println("PositiveQuorum: " + QuorumCalculator.positiveQuorumReached(r.getPositiveAttestations(), r.getTotalAttestations()));
+    }
+}
+
+final class CmdWhitelist implements Command {
+    @Override public String name() { return "whitelist"; }
+    @Override public String usage() { return "whitelist add|remove <address>"; }
+    @Override
+    public void run(List<String> args, LocalYangGoRegistry registry, Print out) {
