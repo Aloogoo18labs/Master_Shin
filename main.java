@@ -85,3 +85,90 @@ final class ValidatorState {
 
 // -----------------------------------------------------------------------------
 // Hash and encoding utilities
+// -----------------------------------------------------------------------------
+
+final class HashUtils {
+    private static final char[] HEX = "0123456789abcdef".toCharArray();
+
+    static byte[] sha256(byte[] input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return md.digest(input);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    static byte[] sha256(String input) {
+        return sha256(input.getBytes(StandardCharsets.UTF_8));
+    }
+
+    static String toHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(HEX[(b >> 4) & 0xf]);
+            sb.append(HEX[b & 0xf]);
+        }
+        return sb.toString();
+    }
+
+    static byte[] fromHex(String hex) {
+        int len = hex.length();
+        if (len % 2 != 0) throw new IllegalArgumentException("Hex length must be even");
+        byte[] out = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            out[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4) + Character.digit(hex.charAt(i + 1), 16));
+        }
+        return out;
+    }
+
+    static String hashToHex32(byte[] hash) {
+        if (hash.length != 32) throw new IllegalArgumentException("Hash must be 32 bytes");
+        return "0x" + toHex(hash);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Quorum calculator (matches contract BPS logic)
+// -----------------------------------------------------------------------------
+
+final class QuorumCalculator {
+    private static final int BPS_DENOM = 10000;
+    private static final int QUORUM_BPS = 6600;
+
+    static boolean quorumReached(int totalAttestations, int validatorCount) {
+        if (validatorCount == 0) return false;
+        return (long) totalAttestations * BPS_DENOM >= (long) validatorCount * QUORUM_BPS;
+    }
+
+    static boolean positiveQuorumReached(int positiveAttestations, int totalAttestations) {
+        if (totalAttestations == 0) return false;
+        return (long) positiveAttestations * BPS_DENOM >= (long) totalAttestations * QUORUM_BPS;
+    }
+
+    static int attestationsNeededForQuorum(int validatorCount) {
+        return (validatorCount * QUORUM_BPS + BPS_DENOM - 1) / BPS_DENOM;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// In-memory YangGo-style registry (simulation)
+// -----------------------------------------------------------------------------
+
+final class LocalYangGoRegistry {
+    private final Map<String, RunRecord> runs = new ConcurrentHashMap<>();
+    private final Map<String, ValidatorState> validators = new ConcurrentHashMap<>();
+    private final Set<String> coordinatorWhitelist = ConcurrentHashMap.newKeySet();
+    private final AtomicLong runCounter = new AtomicLong(0);
+    private volatile boolean trainingPaused = false;
+
+    String generateRunId() {
+        return "run_" + runCounter.incrementAndGet() + "_" + System.currentTimeMillis();
+    }
+
+    void addCoordinator(String address) { coordinatorWhitelist.add(address); }
+    void removeCoordinator(String address) { coordinatorWhitelist.remove(address); }
+    boolean isCoordinatorWhitelisted(String address) { return coordinatorWhitelist.contains(address); }
+
+    RunRecord registerRun(byte[] datasetHash, byte[] configHash, int modelTier, int epochCount, String coordinator) {
+        if (!coordinatorWhitelist.contains(coordinator)) throw new IllegalStateException("Coordinator not whitelisted");
