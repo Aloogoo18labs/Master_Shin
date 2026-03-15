@@ -781,3 +781,90 @@ final class TagIndex {
     private final Map<String, Set<String>> runIdsByTag = new ConcurrentHashMap<>();
 
     void index(String runId, String tag) {
+        runIdsByTag.computeIfAbsent(tag, k -> ConcurrentHashMap.newKeySet()).add(runId);
+    }
+
+    Set<String> getRunIds(String tag) {
+        Set<String> set = runIdsByTag.get(tag);
+        return set == null ? Collections.emptySet() : new HashSet<>(set);
+    }
+
+    Set<String> getAllTags() { return new HashSet<>(runIdsByTag.keySet()); }
+}
+
+// -----------------------------------------------------------------------------
+// Quorum stats aggregator
+// -----------------------------------------------------------------------------
+
+final class QuorumStatsAggregator {
+    private final LocalYangGoRegistry registry;
+
+    QuorumStatsAggregator(LocalYangGoRegistry registry) { this.registry = registry; }
+
+    int totalRuns() { return registry.getRunCount(); }
+    int totalValidators() { return registry.getValidatorCount(); }
+    long runsWithQuorum() {
+        return registry.getAllRuns().stream()
+            .filter(r -> QuorumCalculator.quorumReached(r.getTotalAttestations(), registry.getValidatorCount()))
+            .count();
+    }
+    long runsWithPositiveQuorum() {
+        return registry.getAllRuns().stream()
+            .filter(r -> QuorumCalculator.positiveQuorumReached(r.getPositiveAttestations(), r.getTotalAttestations()))
+            .count();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Model tier labels
+// -----------------------------------------------------------------------------
+
+final class ModelTierLabels {
+    static String name(int tier) {
+        if (tier == 1) return "base";
+        if (tier == 2) return "mid";
+        if (tier == 3) return "large";
+        if (tier == 4) return "xl";
+        return "unknown";
+    }
+
+    static int index(String name) {
+        if ("base".equalsIgnoreCase(name)) return 1;
+        if ("mid".equalsIgnoreCase(name)) return 2;
+        if ("large".equalsIgnoreCase(name)) return 3;
+        if ("xl".equalsIgnoreCase(name)) return 4;
+        return 0;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Run age calculator
+// -----------------------------------------------------------------------------
+
+final class RunAgeCalculator {
+    static long ageSeconds(RunRecord r, long asOfMs) {
+        long reg = r.getRegisteredAt();
+        if (asOfMs <= reg) return 0;
+        return (asOfMs - reg) / 1000;
+    }
+
+    static long ageSecondsNow(RunRecord r) {
+        return ageSeconds(r, System.currentTimeMillis());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Checkpoint batch builder
+// -----------------------------------------------------------------------------
+
+final class CheckpointBatchBuilder {
+    private final List<byte[]> hashes = new ArrayList<>();
+
+    void add(byte[] hash) { hashes.add(hash); }
+    void add(String label) { hashes.add(HashUtils.sha256(label)); }
+    List<byte[]> build() { return new ArrayList<>(hashes); }
+}
+
+// -----------------------------------------------------------------------------
+// Domain separator (EIP-712 style) - for off-chain signing
+// -----------------------------------------------------------------------------
